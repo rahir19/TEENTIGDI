@@ -27,6 +27,11 @@ const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ tool }) => {
   );
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isProcessing]);
 
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -48,15 +53,14 @@ const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ tool }) => {
       if (!supportedTypes.includes(file.type) && !file.name.endsWith('.pdf')) {
         setError({
           type: 'unsupported',
-          message: `The file format of "${file.name}" is not supported. Please use PDF, JPG, or PNG.`
+          message: `Format of "${file.name}" not supported. Use PDF, JPG, or PNG.`
         });
         return false;
       }
-      
-      if (file.size > 20 * 1024 * 1024) { // 20MB limit
+      if (file.size > 20 * 1024 * 1024) {
         setError({
           type: 'generic',
-          message: `The file "${file.name}" is too large. Maximum size allowed is 20MB.`
+          message: `"${file.name}" is too large (Max 20MB).`
         });
         return false;
       }
@@ -68,7 +72,6 @@ const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ tool }) => {
     if (e.target.files) {
       const selected = Array.from(e.target.files);
       if (!validateFiles(selected)) return;
-
       if (tool.id === 'merge') {
         setFiles(prev => [...prev, ...selected]);
       } else {
@@ -98,10 +101,8 @@ const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ tool }) => {
         const base64Data = await fileToBase64(file);
         const mimeType = file.type || 'application/pdf';
 
-        // Simulated check for password protection or corruption
-        // In a real app, you'd use a PDF library to probe the file first
         if (file.name.includes('_protected')) {
-           setError({ type: 'password', message: "This PDF is password protected. Please unlock it before processing." });
+           setError({ type: 'password', message: "This PDF is password protected. Please unlock it first." });
            setIsProcessing(false);
            return;
         }
@@ -119,10 +120,9 @@ const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ tool }) => {
         setEditedText(text);
       }
     } catch (e: any) {
-      console.error(e);
       setError({
         type: 'corrupted',
-        message: "An error occurred during processing. The file might be corrupted or incompatible with our AI engine."
+        message: "An error occurred during processing. The file might be corrupted."
       });
     }
     
@@ -176,7 +176,7 @@ const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ tool }) => {
       const response = await geminiService.chatWithDocument(files[0].name, base64Data, mimeType, currentInput);
       setMessages(prev => [...prev, { role: 'model', content: response }]);
     } catch (e) {
-      setError({ type: 'generic', message: "Trio AI is currently unable to answer questions. Please try again later." });
+      setError({ type: 'generic', message: "Trio AI error. Please try again." });
     }
     setIsProcessing(false);
   };
@@ -187,165 +187,153 @@ const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ tool }) => {
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-20 animate-in fade-in duration-700">
-      <div className="text-center mb-16">
-        <h1 className="text-6xl font-black text-slate-900 dark:text-white mb-6 tracking-tighter">{tool.title}</h1>
-        <p className="text-xl text-slate-500 dark:text-slate-400 font-bold max-w-2xl mx-auto leading-relaxed">{tool.description}</p>
+    <div className="max-w-6xl mx-auto px-4 py-10 md:py-20 animate-in fade-in duration-700">
+      <div className="text-center mb-10 md:mb-16">
+        <h1 className="text-3xl md:text-6xl font-black text-slate-900 dark:text-white mb-4 md:mb-6 tracking-tighter leading-tight">{tool.title}</h1>
+        <p className="text-sm md:text-xl text-slate-500 dark:text-slate-400 font-bold max-w-2xl mx-auto leading-relaxed px-4">{tool.description}</p>
       </div>
 
       {files.length === 0 ? (
-        <div className="space-y-8">
+        <div className="space-y-6 md:space-y-8">
           <div 
-            className="border-4 border-dashed border-slate-200 dark:border-slate-800 rounded-[3rem] p-24 flex flex-col items-center justify-center bg-white dark:bg-slate-900/30 hover:border-orange-500 transition-all cursor-pointer group shadow-2xl shadow-slate-200 dark:shadow-none"
+            className="border-2 md:border-4 border-dashed border-slate-200 dark:border-slate-800 rounded-[2rem] md:rounded-[3rem] p-10 md:p-24 flex flex-col items-center justify-center bg-white dark:bg-slate-900/30 hover:border-orange-500 transition-all cursor-pointer group shadow-xl active:scale-98"
             onClick={() => fileInputRef.current?.click()}
           >
             <input type="file" ref={fileInputRef} className="hidden" multiple={tool.id === 'merge'} onChange={handleFileChange} />
-            <div className={`${tool.color} p-10 rounded-3xl text-white mb-8 shadow-2xl group-hover:scale-110 transition-all group-hover:rotate-3`}>
+            <div className={`${tool.color} p-6 md:p-10 rounded-2xl md:rounded-3xl text-white mb-6 md:mb-8 shadow-2xl transition-all`}>
               {tool.icon}
             </div>
-            <p className="text-4xl font-black text-slate-800 dark:text-slate-100 mb-2">Drop your PDF here</p>
-            <p className="text-slate-400 font-black uppercase tracking-[0.3em] text-xs">The Trio AI is ready for your task</p>
-            <button className="mt-12 bg-orange-600 text-white px-12 py-5 rounded-2xl text-xl font-black hover:bg-orange-700 shadow-2xl transition-all active:scale-95 uppercase tracking-widest">
-              Select {tool.id === 'merge' ? 'Files' : 'File'}
-            </button>
+            <p className="text-xl md:text-4xl font-black text-slate-800 dark:text-slate-100 mb-2 text-center">Tap to Upload</p>
+            <p className="text-slate-400 font-black uppercase tracking-[0.2em] text-[8px] md:text-xs text-center">Trio AI is ready for your document</p>
           </div>
           
           {error && (
-            <div className="animate-in slide-in-from-top duration-300">
-              <div className="bg-red-50 dark:bg-red-900/10 border-2 border-red-500/20 rounded-3xl p-6 flex items-start gap-5">
-                <div className="bg-red-500 p-2 rounded-xl text-white">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+            <div className="animate-in slide-in-from-top duration-300 px-2">
+              <div className="bg-red-50 dark:bg-red-900/10 border-2 border-red-500/20 rounded-2xl p-5 flex items-start gap-4">
+                <div className="bg-red-500 p-1.5 rounded-lg text-white flex-shrink-0">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                 </div>
                 <div>
-                  <h4 className="text-red-600 dark:text-red-400 font-black uppercase tracking-widest text-xs mb-1">Upload Error</h4>
-                  <p className="text-slate-800 dark:text-slate-200 font-bold leading-tight">{error.message}</p>
+                  <h4 className="text-red-600 dark:text-red-400 font-black uppercase tracking-widest text-[10px] mb-1">Upload Error</h4>
+                  <p className="text-slate-800 dark:text-slate-200 font-bold leading-tight text-xs md:text-sm">{error.message}</p>
                 </div>
               </div>
             </div>
           )}
         </div>
       ) : (
-        <div className="bg-white dark:bg-slate-900 rounded-[3rem] shadow-2xl p-10 border border-slate-100 dark:border-slate-800">
-          <div className="flex items-center justify-between mb-10 pb-8 border-b border-slate-100 dark:border-slate-800">
-            <div className="flex items-center">
-              <div className={`${tool.color} p-4 rounded-2xl text-white mr-6 shadow-xl`}>
+        <div className="bg-white dark:bg-slate-900 rounded-[2rem] md:rounded-[3rem] shadow-2xl p-6 md:p-10 border border-slate-100 dark:border-slate-800">
+          <div className="flex flex-col md:flex-row items-center justify-between mb-8 md:mb-10 pb-6 md:pb-8 border-b border-slate-100 dark:border-slate-800 gap-6">
+            <div className="flex items-center w-full md:w-auto">
+              <div className={`${tool.color} p-3 md:p-4 rounded-xl md:rounded-2xl text-white mr-4 md:mr-6 shadow-xl`}>
                 {tool.icon}
               </div>
-              <div>
-                <p className="font-black text-slate-900 dark:text-white text-2xl tracking-tight leading-none">
+              <div className="overflow-hidden">
+                <p className="font-black text-slate-900 dark:text-white text-base md:text-2xl tracking-tight leading-none truncate pr-2">
                   {files.length > 1 ? `${files.length} Files selected` : files[0].name}
                 </p>
-                <div className="flex items-center mt-3">
-                   <div className={`w-2.5 h-2.5 rounded-full ${error ? 'bg-red-500' : 'bg-green-500'} mr-2 animate-pulse`}></div>
-                   <p className="text-xs text-slate-400 font-black uppercase tracking-[0.2em]">{error ? 'Action Required' : 'Ready to Process'}</p>
+                <div className="flex items-center mt-2 md:mt-3">
+                   <div className={`w-2 h-2 rounded-full ${error ? 'bg-red-500' : 'bg-green-500'} mr-2 animate-pulse`}></div>
+                   <p className="text-[8px] md:text-xs text-slate-400 font-black uppercase tracking-[0.2em]">{error ? 'Action Needed' : 'Ready'}</p>
                 </div>
               </div>
             </div>
             <button 
               onClick={() => {setFiles([]); setResult(null); setMessages([]); setEditedText(''); setError(null);}} 
-              className="bg-slate-50 dark:bg-slate-800 p-4 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-300 hover:text-red-500 transition-all"
+              className="w-full md:w-auto bg-slate-100 dark:bg-slate-800 p-4 rounded-xl md:rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-400 hover:text-red-500 transition-all flex items-center justify-center"
             >
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
+              <span className="md:hidden mr-3 font-black uppercase tracking-widest text-xs">Remove All</span>
+              <svg className="w-5 h-5 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           </div>
 
-          {error && (
-            <div className="mb-8 animate-in fade-in zoom-in-95">
-              <div className="bg-red-600 text-white p-6 rounded-[2rem] flex items-center gap-6 shadow-xl shadow-red-500/20">
-                <div className="bg-white/20 p-3 rounded-full">
-                   <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                </div>
-                <div>
-                   <p className="font-black text-xs uppercase tracking-[0.3em] opacity-80 mb-1">Process Blocked</p>
-                   <p className="text-xl font-bold">{error.message}</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {tool.id === 'merge' && !result && (
-            <div className="mb-10 space-y-4">
-              <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">Selected Documents</h3>
-              {files.map((file, idx) => (
-                <div key={idx} className="flex items-center justify-between bg-slate-50 dark:bg-slate-950 p-5 rounded-2xl border border-slate-100 dark:border-slate-800">
-                  <div className="flex items-center">
-                    <span className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-xs font-black mr-4">{idx + 1}</span>
-                    <span className="font-bold text-slate-700 dark:text-slate-300">{file.name}</span>
-                  </div>
-                  <button onClick={() => removeFile(idx)} className="text-red-500 hover:text-red-600 p-2">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                  </button>
-                </div>
-              ))}
-              <button onClick={() => fileInputRef.current?.click()} className="w-full py-4 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl text-slate-400 hover:text-orange-500 hover:border-orange-500 font-black uppercase tracking-widest text-sm transition-all">+ Add More Files</button>
-            </div>
-          )}
-
           {tool.id === 'ai-chat' ? (
-            <div className="space-y-6">
-              <div className="h-[500px] overflow-y-auto border border-slate-100 dark:border-slate-800 rounded-[2rem] p-8 bg-slate-50 dark:bg-slate-950/50 space-y-6 shadow-inner scroll-smooth">
+            <div className="flex flex-col h-[500px] md:h-[600px] border border-slate-100 dark:border-slate-800 rounded-3xl md:rounded-[2rem] overflow-hidden bg-slate-50 dark:bg-slate-950/50">
+              <div className="flex-grow overflow-y-auto p-4 md:p-8 space-y-4 md:space-y-6 scroll-smooth custom-scrollbar">
                 {messages.length === 0 && (
-                  <div className="text-center mt-40">
-                    <div className="inline-block p-5 bg-orange-100 dark:bg-orange-900/20 rounded-[2rem] mb-6"><svg className="w-12 h-12 text-orange-500" fill="currentColor" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg></div>
-                    <p className="text-slate-400 font-black uppercase tracking-[0.3em] text-sm">Ask anything about this document</p>
+                  <div className="flex flex-col items-center justify-center h-full opacity-30 text-center px-4">
+                    <div className="p-4 bg-orange-500/10 rounded-2xl mb-4"><svg className="w-10 h-10 text-orange-500" fill="currentColor" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg></div>
+                    <p className="text-xs md:text-sm font-black uppercase tracking-[0.3em]">Ask about this PDF</p>
                   </div>
                 )}
                 {messages.map((m, idx) => (
                   <div key={idx} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[80%] rounded-3xl px-8 py-5 shadow-lg text-lg font-medium leading-relaxed ${m.role === 'user' ? 'bg-orange-600 text-white' : 'bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-slate-800 dark:text-slate-200'}`}>
+                    <div className={`max-w-[90%] md:max-w-[80%] rounded-2xl md:rounded-3xl px-5 py-3 md:px-8 md:py-5 shadow-sm text-sm md:text-lg font-medium leading-relaxed ${m.role === 'user' ? 'bg-orange-600 text-white' : 'bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-slate-800 dark:text-slate-200'}`}>
                       {m.content}
                     </div>
                   </div>
                 ))}
                 {isProcessing && (
                   <div className="flex justify-start">
-                    <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-3xl px-8 py-5 text-slate-400 animate-pulse font-black uppercase tracking-widest text-xs">The Trio is thinking...</div>
+                    <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl px-5 py-3 text-slate-400 animate-pulse font-black uppercase tracking-widest text-[8px] md:text-[10px]">Trio is thinking...</div>
                   </div>
                 )}
+                <div ref={chatEndRef} />
               </div>
-              <div className="flex gap-4">
-                <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleChat()} placeholder="Type your question for the Trio..." className="flex-grow border-4 border-slate-100 dark:border-slate-800 rounded-3xl px-8 py-6 outline-none focus:border-orange-500 transition-all dark:text-white bg-transparent text-xl font-medium" />
-                <button onClick={handleChat} disabled={isProcessing || !input.trim()} className="bg-orange-600 text-white px-12 rounded-3xl font-black text-xl hover:bg-orange-700 disabled:opacity-50 transition-all active:scale-95 shadow-xl shadow-orange-500/20">SEND</button>
+              <div className="p-3 md:p-6 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row gap-2 md:gap-4">
+                <input 
+                  type="text" 
+                  value={input} 
+                  onChange={(e) => setInput(e.target.value)} 
+                  onKeyPress={(e) => e.key === 'Enter' && handleChat()} 
+                  placeholder="Ask the Trio..." 
+                  className="flex-grow border-2 md:border-4 border-slate-100 dark:border-slate-800 rounded-xl md:rounded-2xl px-5 py-3 md:py-4 outline-none focus:border-orange-500 transition-all dark:text-white bg-transparent text-sm md:text-xl font-medium" 
+                />
+                <button 
+                  onClick={handleChat} 
+                  disabled={isProcessing || !input.trim()} 
+                  className="bg-orange-600 text-white py-3 md:py-4 px-8 rounded-xl md:rounded-2xl font-black text-xs md:text-lg hover:bg-orange-700 disabled:opacity-50 transition-all shadow-lg active:scale-95 uppercase tracking-widest"
+                >
+                  SEND
+                </button>
               </div>
             </div>
           ) : (
-            <div className="space-y-10">
+            <div className="space-y-8 md:space-y-10">
               {result ? (
                 <div className="animate-in fade-in zoom-in-95 duration-500">
-                  <div className="flex items-center justify-between mb-8">
-                    <div><h3 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">AI Output Editor</h3><p className="text-sm text-slate-400 font-bold uppercase tracking-widest mt-1">Refine your document below</p></div>
-                    <div className="flex bg-slate-100 dark:bg-slate-800 p-2 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-inner">
-                      <button onClick={() => setDownloadFormat('pdf')} className={`px-8 py-4 rounded-2xl text-sm font-black transition-all uppercase tracking-widest ${downloadFormat === 'pdf' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500 hover:text-orange-500'}`}>PDF</button>
-                      <button onClick={() => setDownloadFormat('doc')} className={`px-8 py-4 rounded-2xl text-sm font-black transition-all uppercase tracking-widest ${downloadFormat === 'doc' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500 hover:text-orange-500'}`}>WORD</button>
+                  <div className="flex flex-col md:flex-row items-center justify-between mb-6 md:mb-8 gap-4">
+                    <div className="text-center md:text-left">
+                      <h3 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white tracking-tight">AI Output Editor</h3>
+                      <p className="text-[10px] md:text-sm text-slate-400 font-black uppercase tracking-widest mt-1">Refine your document</p>
+                    </div>
+                    <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl md:rounded-3xl border border-slate-200 dark:border-slate-700 shadow-inner w-full md:w-auto">
+                      <button onClick={() => setDownloadFormat('pdf')} className={`flex-grow md:flex-none px-6 md:px-8 py-3 md:py-4 rounded-xl md:rounded-2xl text-[10px] md:text-sm font-black transition-all uppercase tracking-widest ${downloadFormat === 'pdf' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500 hover:text-orange-500'}`}>PDF</button>
+                      <button onClick={() => setDownloadFormat('doc')} className={`flex-grow md:flex-none px-6 md:px-8 py-3 md:py-4 rounded-xl md:rounded-2xl text-[10px] md:text-sm font-black transition-all uppercase tracking-widest ${downloadFormat === 'doc' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500 hover:text-orange-500'}`}>WORD</button>
                     </div>
                   </div>
-                  <div className="relative bg-slate-100 dark:bg-slate-950 p-6 md:p-12 rounded-[3rem] shadow-inner border-4 border-slate-200 dark:border-slate-800">
-                    <textarea value={editedText} onChange={(e) => setEditedText(e.target.value)} className="w-full min-h-[700px] p-12 md:p-20 rounded-md bg-white dark:bg-slate-900 shadow-2xl font-sans text-xl leading-relaxed text-slate-800 dark:text-slate-100 outline-none focus:ring-8 focus:ring-orange-500/5 transition-all border border-slate-200 dark:border-slate-800" placeholder="Your content is ready for editing..." />
-                    <div className="absolute top-16 right-16 hidden lg:block"><div className="flex items-center space-x-2 bg-orange-600 text-white px-5 py-2.5 rounded-full shadow-2xl"><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/></svg><span className="text-[11px] font-black uppercase tracking-widest">Trio AI Verified Output</span></div></div>
+                  <div className="relative bg-slate-100 dark:bg-slate-950 p-4 md:p-12 rounded-[2rem] md:rounded-[3rem] shadow-inner border-2 md:border-4 border-slate-200 dark:border-slate-800">
+                    <textarea 
+                      value={editedText} 
+                      onChange={(e) => setEditedText(e.target.value)} 
+                      className="w-full min-h-[400px] md:min-h-[700px] p-6 md:p-20 rounded-2xl md:rounded-md bg-white dark:bg-slate-900 shadow-xl font-sans text-sm md:text-xl leading-relaxed text-slate-800 dark:text-slate-100 outline-none focus:ring-4 md:focus:ring-8 focus:ring-orange-500/5 transition-all border border-slate-200 dark:border-slate-800" 
+                      placeholder="Editing..." 
+                    />
+                    <div className="absolute top-8 right-8 hidden lg:block"><div className="flex items-center space-x-2 bg-orange-600 text-white px-5 py-2.5 rounded-full shadow-2xl"><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/></svg><span className="text-[11px] font-black uppercase tracking-widest">Trio AI Verified</span></div></div>
                   </div>
-                  <div className="mt-12 flex flex-col lg:flex-row gap-6">
-                    <button onClick={handleDownload} className="flex-grow bg-slate-900 dark:bg-white text-white dark:text-slate-900 py-8 rounded-[2rem] font-black text-3xl hover:scale-[1.01] active:scale-[0.99] shadow-[0_20px_50px_rgba(0,0,0,0.1)] transition-all flex items-center justify-center tracking-tighter"><svg className="w-10 h-10 mr-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>DOWNLOAD .{downloadFormat.toUpperCase()}</button>
-                    <button onClick={() => {setFiles([]); setResult(null); setEditedText(''); setError(null);}} className="px-16 py-8 border-4 border-slate-200 dark:border-slate-800 text-slate-400 hover:text-orange-500 hover:border-orange-500 rounded-[2rem] font-black transition-all text-2xl uppercase tracking-tighter">RESET</button>
+                  <div className="mt-8 md:mt-12 flex flex-col gap-4">
+                    <button onClick={handleDownload} className="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 py-6 md:py-8 rounded-2xl md:rounded-[2rem] font-black text-xl md:text-3xl hover:scale-[1.01] active:scale-95 shadow-xl transition-all flex items-center justify-center tracking-tighter uppercase"><svg className="w-6 h-6 md:w-10 md:h-10 mr-4 md:mr-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>DOWNLOAD {downloadFormat.toUpperCase()}</button>
+                    <button onClick={() => {setFiles([]); setResult(null); setEditedText(''); setError(null);}} className="w-full py-5 md:py-8 border-2 md:border-4 border-slate-200 dark:border-slate-800 text-slate-400 hover:text-orange-500 hover:border-orange-500 rounded-2xl md:rounded-[2rem] font-black transition-all text-sm md:text-2xl uppercase tracking-widest">START NEW TASK</button>
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center py-10">
+                <div className="flex flex-col items-center py-6 md:py-10">
                    <button 
                     onClick={handleProcess}
                     disabled={isProcessing || !!error}
-                    className="w-full max-w-2xl bg-orange-600 text-white py-10 rounded-[3rem] text-4xl font-black hover:bg-orange-700 shadow-2xl shadow-orange-500/40 disabled:opacity-50 flex items-center justify-center transition-all hover:scale-105 active:scale-95 group"
+                    className="w-full max-w-2xl bg-orange-600 text-white py-8 md:py-10 rounded-2xl md:rounded-[3rem] text-xl md:text-4xl font-black hover:bg-orange-700 shadow-2xl disabled:opacity-50 flex items-center justify-center transition-all active:scale-95 group uppercase tracking-widest px-4 text-center"
                   >
                     {isProcessing ? (
-                      <span className="flex items-center"><svg className="animate-spin -ml-1 mr-5 h-10 w-10 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>The Trio is Working...</span>
+                      <span className="flex items-center"><svg className="animate-spin -ml-1 mr-3 md:mr-5 h-6 w-6 md:h-10 md:w-10 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Trio Working...</span>
                     ) : (
-                      <><svg className="w-10 h-10 mr-5 group-hover:rotate-12 transition-transform" fill="currentColor" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>RUN {tool.title.toUpperCase()}</>
+                      <><svg className="w-6 h-6 md:w-10 md:h-10 mr-3 md:mr-5 group-hover:rotate-12 transition-transform" fill="currentColor" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>Process Now</>
                     )}
                   </button>
-                  <div className="mt-12 flex items-center space-x-8">
-                     <div className="flex -space-x-4">
-                        {[1,2,3].map(i => <div key={i} className="w-14 h-14 rounded-full border-4 border-white dark:border-slate-900 bg-slate-200 dark:bg-slate-800 overflow-hidden shadow-xl"><div className="w-full h-full bg-[#ffdca2] flex items-center justify-center text-xs font-black">AI</div></div>)}
+                  <div className="mt-8 md:mt-12 flex items-center space-x-6 md:space-x-8">
+                     <div className="flex -space-x-3 md:-space-x-4">
+                        {[1,2,3].map(i => <div key={i} className="w-10 h-10 md:w-14 md:h-14 rounded-full border-2 md:border-4 border-white dark:border-slate-900 bg-slate-200 dark:bg-slate-800 overflow-hidden shadow-xl"><div className="w-full h-full bg-[#ffdca2] flex items-center justify-center text-[8px] md:text-xs font-black">AI</div></div>)}
                      </div>
-                     <p className="text-slate-400 font-black text-sm uppercase tracking-[0.4em]">Engineered for perfection</p>
+                     <p className="text-[8px] md:text-sm text-slate-400 font-black uppercase tracking-[0.3em] md:tracking-[0.4em]">Engineered for perfection</p>
                   </div>
                 </div>
               )}

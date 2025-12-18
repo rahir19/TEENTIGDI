@@ -9,6 +9,7 @@ import { ToolID } from './types';
 const App: React.FC = () => {
   const [activeToolId, setActiveToolId] = useState<ToolID | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [suggestion, setSuggestion] = useState('');
 
   const activeTool = activeToolId ? TOOLS.find(t => t.id === activeToolId) : null;
 
@@ -20,7 +21,6 @@ const App: React.FC = () => {
   const handleCategoryClick = (category: string | null) => {
     setCategoryFilter(category);
     setActiveToolId(null);
-    // Scroll to tools if not already there
     const el = document.getElementById('popular-tools');
     if (el) {
       setTimeout(() => {
@@ -33,6 +33,14 @@ const App: React.FC = () => {
     setActiveToolId(null);
     setCategoryFilter(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleSendSuggestion = () => {
+    if (!suggestion.trim()) return;
+    const subject = encodeURIComponent("Suggestion for Teen Tigdi");
+    const body = encodeURIComponent(suggestion);
+    window.location.href = `mailto:raghavahir371@gmail.com?subject=${subject}&body=${body}`;
+    setSuggestion('');
   };
 
   return (
@@ -110,6 +118,38 @@ const App: React.FC = () => {
                   onClick={(id) => setActiveToolId(id as ToolID)} 
                 />
               ))}
+            </div>
+          </section>
+
+          {/* Suggestions Section */}
+          <section className="bg-slate-100 dark:bg-slate-900/50 py-24">
+            <div className="max-w-4xl mx-auto px-4 text-center">
+              <div className="inline-block p-4 bg-orange-100 dark:bg-orange-900/20 rounded-2xl mb-6">
+                <svg className="w-10 h-10 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+                </svg>
+              </div>
+              <h2 className="text-4xl font-black text-slate-900 dark:text-white mb-4 tracking-tight">Got a suggestion?</h2>
+              <p className="text-lg text-slate-500 dark:text-slate-400 mb-10 font-bold">Help us make Teen Tigdi better. Share your ideas directly with our lead developer.</p>
+              
+              <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-800">
+                <textarea 
+                  value={suggestion}
+                  onChange={(e) => setSuggestion(e.target.value)}
+                  placeholder="Tell us what tool we should add next or how we can improve..."
+                  className="w-full h-40 p-6 rounded-2xl bg-slate-50 dark:bg-slate-800 border-2 border-transparent focus:border-orange-500 outline-none text-slate-800 dark:text-white font-medium transition-all mb-6 resize-none"
+                />
+                <button 
+                  onClick={handleSendSuggestion}
+                  disabled={!suggestion.trim()}
+                  className="w-full py-5 bg-orange-500 hover:bg-orange-600 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white rounded-2xl font-black text-lg shadow-xl shadow-orange-500/20 transition-all active:scale-[0.98] uppercase tracking-widest flex items-center justify-center gap-3"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                  Send Suggestion to Raghav
+                </button>
+              </div>
             </div>
           </section>
         </div>

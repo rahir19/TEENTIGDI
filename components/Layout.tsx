@@ -161,7 +161,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onHomeClick, onCategoryClick,
                <AnimatedLogo scale={1.2} />
             </div>
             <p className="text-sm font-medium leading-relaxed max-w-[280px] text-slate-500">
-              The ultimate trio of PDF management tools. Powering millions of documents with Gemini AI intelligence.
+              The ultimate trio of PDF management tools. Powering millions of documents with advanced Trio AI intelligence.
             </p>
           </div>
           <div>
@@ -193,7 +193,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onHomeClick, onCategoryClick,
           </div>
         </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-16 pt-8 border-t border-slate-900 text-center text-[10px] font-black text-slate-800 tracking-[0.5em] uppercase">
-          <p>© 2025 TEEN TIGDI • ENGINEERED FOR PERSFECTION</p>
+          <p>© 2025 TEEN TIGDI • ENGINEERED FOR PERFECTION</p>
         </div>
       </footer>
     </div>

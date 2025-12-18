@@ -41,8 +41,8 @@ export class GeminiService {
       });
       return response.text || "No output could be generated.";
     } catch (error) {
-      console.error("Gemini processing error:", error);
-      return "An error occurred while the AI was reading your document. Please ensure the file is valid and not password protected.";
+      console.error("Trio AI processing error:", error);
+      return "An error occurred while the Trio AI was reading your document. Please ensure the file is valid and not password protected.";
     }
   }
 

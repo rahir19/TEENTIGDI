@@ -62,33 +62,34 @@ const ContactModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => voi
   ];
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="bg-[#111827] w-full max-w-[360px] rounded-[2.5rem] shadow-2xl border border-slate-800/60 overflow-hidden animate-in zoom-in-95 duration-300">
-        <div className="p-5 flex justify-end">
-          <button onClick={onClose} className="p-2 hover:bg-slate-800/50 rounded-full transition-colors text-slate-500">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-xl animate-in fade-in duration-300">
+      <div className="bg-[#0f172a] w-full max-w-[380px] rounded-[3rem] shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-slate-800 overflow-hidden animate-in zoom-in-95 duration-300">
+        <div className="p-6 flex justify-end">
+          <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-full transition-colors text-slate-500 group">
+            <svg className="w-6 h-6 group-hover:rotate-90 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
         
-        <div className="px-7 pb-10 text-center">
+        <div className="px-8 pb-12 text-center">
           <h2 className="text-4xl font-black text-white mb-10 tracking-tight">About Me</h2>
           
-          <div className="bg-[#1f2937]/50 rounded-3xl p-6 flex items-center gap-5 mb-6 border border-slate-700/30">
-             <div className="w-20 h-20 rounded-full border-2 border-orange-500/50 p-1 flex-shrink-0">
-                <div className="w-full h-full rounded-full overflow-hidden bg-slate-800">
+          <div className="bg-[#1e293b]/60 rounded-[2.5rem] p-6 flex items-center gap-5 mb-8 border border-slate-700/50 shadow-inner">
+             <div className="relative">
+                <div className="w-20 h-20 rounded-full border-2 border-orange-500 p-1.5 flex-shrink-0 bg-slate-900 shadow-xl overflow-hidden">
                     <img 
                       src="raghav.jpg" 
                       alt="Raghav Ahir" 
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover rounded-full"
                       onError={(e) => {
-                        (e.target as HTMLImageElement).src = "https://ui-avatars.com/api/?name=Raghav+Ahir&background=0ea5e9&color=fff&size=128";
+                        (e.target as HTMLImageElement).src = "https://ui-avatars.com/api/?name=Raghav+Ahir&background=f97316&color=fff&size=128";
                       }}
                     />
                 </div>
+                <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 border-4 border-[#1e293b] rounded-full shadow-lg"></div>
              </div>
              <div className="text-left">
                 <p className="text-white font-black text-xl leading-tight">Raghav Ahir Yaduvanshi</p>
-                <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] mt-1.5">Lead Developer</p>
+                <p className="text-orange-500 text-[10px] font-black uppercase tracking-[0.2em] mt-2 bg-orange-500/10 px-2 py-0.5 rounded-md inline-block">Lead Developer</p>
              </div>
           </div>
 
@@ -99,9 +100,9 @@ const ContactModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => voi
                 href={item.link} 
                 target={item.link.startsWith('http') ? '_blank' : undefined}
                 rel="noopener noreferrer"
-                className="w-full bg-[#1f2937]/40 hover:bg-[#1f2937]/80 border border-slate-700/20 rounded-[1.5rem] py-5 px-6 flex items-center gap-5 transition-all group active:scale-[0.98]"
+                className="w-full bg-slate-800/40 hover:bg-slate-800 border border-slate-700/30 rounded-2xl py-5 px-6 flex items-center gap-5 transition-all group active:scale-[0.98] hover:shadow-lg hover:shadow-orange-500/5"
               >
-                <div className="group-hover:scale-110 transition-transform duration-300">
+                <div className="group-hover:scale-110 transition-transform duration-300 drop-shadow-md">
                   {item.icon}
                 </div>
                 <span className="text-slate-200 font-bold text-[15px] tracking-wide">{item.text}</span>
@@ -197,6 +198,9 @@ const Layout: React.FC<LayoutProps> = ({ children, onHomeClick, onCategoryClick,
   }, []);
 
   const toggleTheme = () => {
+    // Apply temporary glow effect to body
+    document.body.classList.add('theme-changing');
+    
     if (isDark) {
       document.documentElement.classList.remove('dark');
       localStorage.setItem('theme', 'light');
@@ -206,6 +210,11 @@ const Layout: React.FC<LayoutProps> = ({ children, onHomeClick, onCategoryClick,
       localStorage.setItem('theme', 'dark');
       setIsDark(true);
     }
+
+    // Remove animation class after sequence finish
+    setTimeout(() => {
+        document.body.classList.remove('theme-changing');
+    }, 600);
   };
 
   const navItems = [
@@ -262,23 +271,32 @@ const Layout: React.FC<LayoutProps> = ({ children, onHomeClick, onCategoryClick,
             <div className="flex items-center space-x-4">
               <button 
                 onClick={toggleTheme}
-                className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all active:scale-95 group overflow-hidden relative"
               >
                 {isDark ? (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 animate-theme-pop" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
                   </svg>
                 ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 animate-theme-pop text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                   </svg>
                 )}
+                {/* Subtle indicator for button clickability */}
+                <div className="absolute inset-0 bg-orange-500/0 group-hover:bg-orange-500/5 transition-colors"></div>
               </button>
               
               {isLoggedIn ? (
                 <div className="flex items-center gap-3 pl-4 border-l border-slate-200 dark:border-slate-800">
                   <div className="w-10 h-10 rounded-full border-2 border-orange-500 overflow-hidden shadow-lg">
-                    <img src="raghav.jpg" className="w-full h-full object-cover" alt="Raghav" />
+                    <img 
+                      src="raghav.jpg" 
+                      className="w-full h-full object-cover" 
+                      alt="Raghav" 
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = "https://ui-avatars.com/api/?name=Raghav+Ahir&background=f97316&color=fff&size=64";
+                      }}
+                    />
                   </div>
                   <div className="hidden sm:block">
                     <p className="text-[10px] font-black uppercase tracking-widest text-orange-500 leading-none mb-1">Premium</p>

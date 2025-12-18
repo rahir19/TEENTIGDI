@@ -1,6 +1,6 @@
 {
   "name": "Teen Tigdi",
-  "description": "An all-in-one PDF management and AI-powered productivity suite inspired by iLovePDF, offering tools for merging, splitting, and analyzing documents with proprietary Trio AI technology.",
+  "description": "Teen Tigdi is a professional-grade PDF management suite featuring the proprietary Trio AI Engine for document intelligence, conversion, and organization. Engineered for the modern workspace by Raghav Ahir.",
   "requestFramePermissions": [
     "camera"
   ]

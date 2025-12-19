@@ -1,344 +1,386 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { PDFTool, ChatMessage } from '../types';
+import { PDFTool, ChatMessage, ToolID } from '../types';
 import { geminiService } from '../services/geminiService';
-import { jsPDF } from 'https://esm.sh/jspdf';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
+import { PDFDocument } from 'pdf-lib';
+import { Document, Packer, Paragraph, TextRun } from 'docx';
+
+// PDF.js worker for rendering
+const PDFJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+const PDFJS_WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 interface ToolWorkspaceProps {
   tool: PDFTool;
 }
 
-interface ErrorState {
-  type: 'unsupported' | 'corrupted' | 'password' | 'generic';
-  message: string;
+interface PdfPage {
+  dataUrl: string;
+  pageNumber: number;
+  fileName: string;
 }
 
 const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ tool }) => {
   const [files, setFiles] = useState<File[]>([]);
+  const [pdfPages, setPdfPages] = useState<PdfPage[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [downloadStep, setDownloadStep] = useState<'idle' | 'uploading' | 'converting' | 'done'>('idle');
+  const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<string | null>(null);
-  const [editedText, setEditedText] = useState<string>('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
-  const [error, setError] = useState<ErrorState | null>(null);
   
-  const [downloadFormat, setDownloadFormat] = useState<'pdf' | 'doc'>(
-    (tool.id.includes('word') || tool.id.includes('ocr')) ? 'doc' : 'pdf'
-  );
-
+  // Scanner States
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [scannedPages, setScannedPages] = useState<string[]>([]);
+  
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const mockupRef = useRef<HTMLDivElement>(null);
+
+  const isPdfTool = !['screenshot-editor', 'jpg-to-pdf', 'scan'].includes(tool.id);
+  const isScannerTool = tool.id === 'scan';
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isProcessing]);
+  }, [messages, isProcessing, scannedPages]);
 
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => {
-        const base64String = (reader.result as string).split(',')[1];
-        resolve(base64String);
+  useEffect(() => {
+    if (isPdfTool) {
+      const script = document.createElement('script');
+      script.src = PDFJS_URL;
+      script.onload = () => {
+        (window as any).pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
       };
-      reader.onerror = error => reject(error);
+      document.head.appendChild(script);
+    }
+  }, [isPdfTool]);
+
+  useEffect(() => {
+    if (isScannerTool && isCameraActive) {
+      navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } 
+      })
+      .then(stream => { if (videoRef.current) videoRef.current.srcObject = stream; })
+      .catch(() => setIsCameraActive(false));
+    }
+    return () => {
+      const stream = videoRef.current?.srcObject as MediaStream;
+      stream?.getTracks().forEach(track => track.stop());
+    };
+  }, [isScannerTool, isCameraActive]);
+
+  const capturePage = () => {
+    if (videoRef.current && canvasRef.current) {
+      const canvas = canvasRef.current;
+      const video = videoRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(video, 0, 0);
+        setScannedPages(prev => [...prev, canvas.toDataURL('image/jpeg', 0.92)]);
+      }
+    }
+  };
+
+  useEffect(() => {
+    const renderPreviews = async () => {
+      if (files.length === 0) { setPdfPages([]); return; }
+      if (isPdfTool) {
+        setIsProcessing(true);
+        const newPages: PdfPage[] = [];
+        for (const file of files) {
+          if (!file.name.toLowerCase().endsWith('.pdf')) continue;
+          try {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await (window as any).pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            for (let i = 1; i <= Math.min(pdf.numPages, 10); i++) {
+              const page = await pdf.getPage(i);
+              const viewport = page.getViewport({ scale: 0.6 });
+              const canvas = document.createElement('canvas');
+              canvas.height = viewport.height;
+              canvas.width = viewport.width;
+              await page.render({ canvasContext: canvas.getContext('2d')!, viewport }).promise;
+              newPages.push({ dataUrl: canvas.toDataURL(), pageNumber: i, fileName: file.name });
+            }
+          } catch (e) { console.error(e); }
+        }
+        setPdfPages(newPages);
+        setIsProcessing(false);
+      }
+    };
+    renderPreviews();
+  }, [files, isPdfTool, tool.id]);
+
+  const getExportExtension = (id: ToolID): string => {
+    if (id.includes('to-word')) return 'docx';
+    if (id.includes('to-excel')) return 'xlsx';
+    if (id.includes('to-ppt')) return 'pptx';
+    if (id.includes('to-jpg')) return 'jpg';
+    if (id.includes('to-pdf') || id === 'merge' || id === 'split' || id === 'compress' || id === 'scan') return 'pdf';
+    return 'bin';
+  };
+
+  const generateWordDoc = async (text: string) => {
+    const doc = new Document({
+      sections: [{
+        properties: {},
+        children: text.split('\n').map(line => new Paragraph({
+          children: [new TextRun(line)],
+        })),
+      }],
     });
+    return await Packer.toBlob(doc);
   };
 
-  const validateFiles = (selected: File[]): boolean => {
-    setError(null);
-    const supportedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-    
-    for (const file of selected) {
-      if (!supportedTypes.includes(file.type) && !file.name.endsWith('.pdf')) {
-        setError({
-          type: 'unsupported',
-          message: `Format of "${file.name}" not supported. Use PDF, JPG, or PNG.`
-        });
-        return false;
-      }
-      if (file.size > 20 * 1024 * 1024) {
-        setError({
-          type: 'generic',
-          message: `"${file.name}" is too large (Max 20MB).`
-        });
-        return false;
-      }
-    }
-    return true;
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const selected = Array.from(e.target.files);
-      if (!validateFiles(selected)) return;
-      if (tool.id === 'merge') {
-        setFiles(prev => [...prev, ...selected]);
-      } else {
-        setFiles(selected.slice(0, 1));
-      }
-      setResult(null);
-      setEditedText('');
-      setMessages([]);
-    }
-  };
-
-  const handleProcess = async () => {
-    if (files.length === 0) return;
+  const handleAIAnalysis = async (): Promise<string | null> => {
+    if (files.length === 0 && scannedPages.length === 0) return null;
     setIsProcessing(true);
-    setResult(null);
-    setError(null);
-
     try {
-      if (tool.id === 'merge') {
-        const summary = `MERGED DOCUMENT\n\nFiles combined: ${files.length}\nFiles list:\n` + 
-                       files.map((f, i) => `${i+1}. ${f.name}`).join('\n') +
-                       `\n\nCombined Content Summary: [Simulated merged binary data for ${files.length} documents]`;
-        setResult(summary);
-        setEditedText(summary);
-      } else {
-        const file = files[0];
-        const base64Data = await fileToBase64(file);
-        const mimeType = file.type || 'application/pdf';
+      const isWordTask = tool.id.includes('to-word');
+      const prompt = isWordTask 
+        ? "Extract ALL text from this document. Give me only the text, no conversational fillers. I need this for a Word document conversion."
+        : "Bhai is scanned page mein kya hai? Summary de.";
 
-        if (file.name.includes('_protected')) {
-           setError({ type: 'password', message: "This PDF is password protected. Please unlock it first." });
-           setIsProcessing(false);
-           return;
-        }
-
-        let text = "";
-        if (tool.id === 'ai-summarize') {
-          text = await geminiService.summarizeDocument(file.name, base64Data, mimeType);
-        } else if (tool.id === 'pdf-to-ocr-word' || tool.id === 'pdf-to-word') {
-          text = await geminiService.convertToEditable(file.name, base64Data, mimeType);
-        } else {
-          text = await geminiService.convertToEditable(file.name, base64Data, mimeType);
-        }
-        
-        setResult(text);
-        setEditedText(text);
+      let extractionResult = "";
+      if (scannedPages.length > 0) {
+        const data = scannedPages[0].split(',')[1];
+        extractionResult = await geminiService.processDocument("Scan", data, "image/jpeg", prompt, "Expert analyst.");
+      } else if (files.length > 0) {
+        const base64 = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve((reader.result as string).split(',')[1]);
+          reader.readAsDataURL(files[0]);
+        });
+        extractionResult = await geminiService.processDocument(files[0].name, base64, files[0].type || 'application/pdf', prompt, "Helpful assistant.");
       }
-    } catch (e: any) {
-      setError({
-        type: 'corrupted',
-        message: "An error occurred during processing. The file might be corrupted."
-      });
+      
+      setResult(extractionResult);
+      return extractionResult;
+    } catch (e) {
+      console.error(e);
+      return null;
+    } finally {
+      setIsProcessing(false);
     }
-    
-    setIsProcessing(false);
   };
 
-  const handleDownload = () => {
-    const contentToSave = editedText || result;
-    if (!contentToSave) return;
-    const fileName = (files[0]?.name.split('.')[0] || 'teen_tigdi_export') + `.${downloadFormat}`;
+  const handleDownload = async () => {
+    if (files.length === 0 && scannedPages.length === 0) return;
+    
+    setDownloadStep('uploading');
+    setProgress(10);
+    
+    try {
+      let currentText = result;
+      const ext = getExportExtension(tool.id);
 
-    if (downloadFormat === 'doc') {
-      const htmlContent = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'></head><body style="font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; padding: 1in; color: #333;"><div style="white-space: pre-wrap; font-size: 11pt;">${contentToSave.replace(/\n/g, '<br>')}</div></body></html>`;
-      const blob = new Blob([htmlContent], { type: 'application/msword' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } else {
-      const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(11);
-      const splitText = doc.splitTextToSize(contentToSave, 180);
-      let y = 20;
-      const pageHeight = doc.internal.pageSize.height;
-      splitText.forEach((line: string) => {
-        if (y > pageHeight - 20) { doc.addPage(); y = 20; }
-        doc.text(line, 15, y);
-        y += 7; 
-      });
-      doc.save(fileName);
+      // If we are doing PDF to Word/Excel, we MUST have AI text first
+      if ((tool.id.includes('to-word') || tool.id.includes('to-excel')) && !currentText) {
+          setDownloadStep('converting');
+          setProgress(30);
+          currentText = await handleAIAnalysis();
+          if (!currentText) throw new Error("AI Extraction failed");
+      }
+
+      setDownloadStep('converting');
+      setProgress(60);
+      
+      let finalBlob: Blob | null = null;
+      let finalFileName = `teen-tigdi-${tool.id}-${Date.now()}`;
+
+      if (tool.id === 'scan') {
+        const doc = new jsPDF();
+        for (let i = 0; i < scannedPages.length; i++) {
+            if (i > 0) doc.addPage();
+            const imgData = scannedPages[i];
+            const imgProps = doc.getImageProperties(imgData);
+            const pdfWidth = doc.internal.pageSize.getWidth();
+            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+            doc.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+        }
+        finalBlob = doc.output('blob');
+      } else if (ext === 'docx') {
+        finalBlob = await generateWordDoc(currentText || "No text extracted.");
+      } else if (tool.id === 'merge' && files.length > 1) {
+        const mergedPdf = await PDFDocument.create();
+        for (const file of files) {
+          const pdf = await PDFDocument.load(await file.arrayBuffer());
+          const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+          pages.forEach(p => mergedPdf.addPage(p));
+        }
+        const pdfBytes = await mergedPdf.save();
+        finalBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+      } else if (ext === 'jpg' && pdfPages.length > 0) {
+        const res = await fetch(pdfPages[0].dataUrl);
+        finalBlob = await res.blob();
+      } else {
+        finalBlob = files[0] || (await (await fetch(scannedPages[0])).blob());
+      }
+
+      if (finalBlob) {
+        setProgress(90);
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(finalBlob);
+        link.download = `${finalFileName}.${ext}`;
+        link.click();
+        setProgress(100);
+        setDownloadStep('done');
+      }
+      
+      setTimeout(() => { setDownloadStep('idle'); setProgress(0); }, 3000);
+    } catch (e) {
+      console.error(e);
+      setDownloadStep('idle');
+      setProgress(0);
     }
   };
 
   const handleChat = async () => {
-    if (!input.trim() || files.length === 0) return;
-    setError(null);
-    const userMsg: ChatMessage = { role: 'user', content: input };
-    setMessages(prev => [...prev, userMsg]);
-    const currentInput = input;
-    setInput('');
+    if (!input.trim() || (files.length === 0 && scannedPages.length === 0)) return;
+    const msg = input; setInput('');
+    setMessages(p => [...p, { role: 'user', content: msg }]);
     setIsProcessing(true);
-
     try {
-      const base64Data = await fileToBase64(files[0]);
-      const mimeType = files[0].type || 'application/pdf';
-      const response = await geminiService.chatWithDocument(files[0].name, base64Data, mimeType, currentInput);
-      setMessages(prev => [...prev, { role: 'model', content: response }]);
-    } catch (e) {
-      setError({ type: 'generic', message: "Trio AI error. Please try again." });
-    }
-    setIsProcessing(false);
-  };
-
-  const removeFile = (index: number) => {
-    setFiles(prev => prev.filter((_, i) => i !== index));
-    if (files.length <= 1) setError(null);
+      const data = scannedPages.length > 0 ? scannedPages[0].split(',')[1] : null;
+      if (data) {
+        const res = await geminiService.chatWithDocument("Scan", data, "image/jpeg", msg);
+        setMessages(p => [...p, { role: 'model', content: res }]);
+      } else {
+        const reader = new FileReader();
+        reader.readAsDataURL(files[0]);
+        reader.onload = async () => {
+          const res = await geminiService.chatWithDocument(files[0].name, (reader.result as string).split(',')[1], files[0].type || 'application/pdf', msg);
+          setMessages(p => [...p, { role: 'model', content: res }]);
+        };
+      }
+    } finally { setIsProcessing(false); }
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-10 md:py-20 animate-in fade-in duration-700">
-      <div className="text-center mb-10 md:mb-16">
-        <h1 className="text-3xl md:text-6xl font-black text-slate-900 dark:text-white mb-4 md:mb-6 tracking-tighter leading-tight">{tool.title}</h1>
-        <p className="text-sm md:text-xl text-slate-500 dark:text-slate-400 font-bold max-w-2xl mx-auto leading-relaxed px-4">{tool.description}</p>
-      </div>
-
-      {files.length === 0 ? (
-        <div className="space-y-6 md:space-y-8">
-          <div 
-            className="border-2 md:border-4 border-dashed border-slate-200 dark:border-slate-800 rounded-[2rem] md:rounded-[3rem] p-10 md:p-24 flex flex-col items-center justify-center bg-white dark:bg-slate-900/30 hover:border-orange-500 transition-all cursor-pointer group shadow-xl active:scale-98"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <input type="file" ref={fileInputRef} className="hidden" multiple={tool.id === 'merge'} onChange={handleFileChange} />
-            <div className={`${tool.color} p-6 md:p-10 rounded-2xl md:rounded-3xl text-white mb-6 md:mb-8 shadow-2xl transition-all`}>
-              {tool.icon}
-            </div>
-            <p className="text-xl md:text-4xl font-black text-slate-800 dark:text-slate-100 mb-2 text-center">Tap to Upload</p>
-            <p className="text-slate-400 font-black uppercase tracking-[0.2em] text-[8px] md:text-xs text-center">Trio AI is ready for your document</p>
-          </div>
-          
-          {error && (
-            <div className="animate-in slide-in-from-top duration-300 px-2">
-              <div className="bg-red-50 dark:bg-red-900/10 border-2 border-red-500/20 rounded-2xl p-5 flex items-start gap-4">
-                <div className="bg-red-500 p-1.5 rounded-lg text-white flex-shrink-0">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+    <div className="max-w-[1440px] mx-auto px-4 py-8 animate-in fade-in duration-500">
+      {files.length === 0 && !isCameraActive && scannedPages.length === 0 ? (
+        <div className="text-center py-20 flex flex-col items-center">
+            <h1 className="text-4xl md:text-7xl font-black text-slate-900 dark:text-white mb-6 tracking-tighter uppercase italic">
+              {tool.title} <span className="text-orange-500">Suite</span>
+            </h1>
+            <p className="text-slate-500 font-bold mb-12 max-w-xl mx-auto text-lg leading-relaxed">
+               {isScannerTool ? "Phone ya desktop camera se scan karein aur professional PDF banayein." : "Professional grade document tools powered by Trio AI."}
+            </p>
+            <div className="flex flex-col md:flex-row gap-6 w-full max-w-4xl">
+                {isScannerTool && (
+                    <div onClick={() => setIsCameraActive(true)} className="flex-1 border-4 border-dashed border-slate-200 dark:border-slate-800 rounded-[3rem] p-12 bg-white dark:bg-slate-900/30 hover:border-orange-500 transition-all cursor-pointer shadow-2xl group flex flex-col items-center">
+                        <div className="bg-orange-500 p-8 rounded-3xl text-white mb-6 shadow-xl group-hover:scale-110 transition-transform">
+                            <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                        </div>
+                        <p className="text-2xl font-black uppercase italic tracking-tighter">Use Camera</p>
+                    </div>
+                )}
+                <div onClick={() => fileInputRef.current?.click()} className="flex-1 border-4 border-dashed border-slate-200 dark:border-slate-800 rounded-[3rem] p-12 bg-white dark:bg-slate-900/30 hover:border-orange-500 transition-all cursor-pointer shadow-2xl group flex flex-col items-center">
+                    <input type="file" ref={fileInputRef} className="hidden" accept={tool.id.includes('pdf-to') ? '.pdf' : '*/*'} multiple={tool.id === 'merge'} onChange={e => e.target.files && setFiles(Array.from(e.target.files))} />
+                    <div className={`${tool.color} p-8 rounded-3xl text-white mb-6 shadow-xl group-hover:scale-110 transition-transform`}>{tool.icon}</div>
+                    <p className="text-2xl font-black uppercase italic tracking-tighter">Choose Files</p>
                 </div>
-                <div>
-                  <h4 className="text-red-600 dark:text-red-400 font-black uppercase tracking-widest text-[10px] mb-1">Upload Error</h4>
-                  <p className="text-slate-800 dark:text-slate-200 font-bold leading-tight text-xs md:text-sm">{error.message}</p>
-                </div>
-              </div>
             </div>
-          )}
         </div>
       ) : (
-        <div className="bg-white dark:bg-slate-900 rounded-[2rem] md:rounded-[3rem] shadow-2xl p-6 md:p-10 border border-slate-100 dark:border-slate-800">
-          <div className="flex flex-col md:flex-row items-center justify-between mb-8 md:mb-10 pb-6 md:pb-8 border-b border-slate-100 dark:border-slate-800 gap-6">
-            <div className="flex items-center w-full md:w-auto">
-              <div className={`${tool.color} p-3 md:p-4 rounded-xl md:rounded-2xl text-white mr-4 md:mr-6 shadow-xl`}>
-                {tool.icon}
-              </div>
-              <div className="overflow-hidden">
-                <p className="font-black text-slate-900 dark:text-white text-base md:text-2xl tracking-tight leading-none truncate pr-2">
-                  {files.length > 1 ? `${files.length} Files selected` : files[0].name}
-                </p>
-                <div className="flex items-center mt-2 md:mt-3">
-                   <div className={`w-2 h-2 rounded-full ${error ? 'bg-red-500' : 'bg-green-500'} mr-2 animate-pulse`}></div>
-                   <p className="text-[8px] md:text-xs text-slate-400 font-black uppercase tracking-[0.2em]">{error ? 'Action Needed' : 'Ready'}</p>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-[calc(100vh-140px)]">
+          <div className="lg:col-span-3 space-y-4">
+            <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-4 mb-8">
+                    <div className={`${tool.color} p-3 rounded-xl text-white shadow-lg`}>{tool.icon}</div>
+                    <div className="truncate">
+                        <h3 className="font-black text-slate-900 dark:text-white truncate uppercase italic text-sm">{tool.title}</h3>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{scannedPages.length || files.length} Items</p>
+                    </div>
                 </div>
-              </div>
+                
+                <div className="space-y-4">
+                    {downloadStep !== 'idle' && (
+                        <div className="mb-4">
+                            <div className="flex justify-between text-[10px] font-black uppercase text-orange-500 mb-1">
+                                <span>{downloadStep}...</span>
+                                <span>{progress}%</span>
+                            </div>
+                            <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden"><div className="h-full bg-orange-500 transition-all duration-500" style={{ width: `${progress}%` }} /></div>
+                        </div>
+                    )}
+                    
+                    <button 
+                        onClick={handleDownload}
+                        disabled={downloadStep !== 'idle' || isProcessing}
+                        className={`w-full py-5 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl transition-all flex items-center justify-center gap-2 ${
+                            downloadStep === 'done' ? 'bg-green-500 text-white' : 'bg-orange-600 text-white shadow-orange-500/20'
+                        } active:scale-95 disabled:opacity-50`}
+                    >
+                        {downloadStep === 'idle' ? `Convert & Download .${getExportExtension(tool.id)}` : 'Processing...'}
+                    </button>
+                    
+                    <button onClick={() => handleAIAnalysis()} className="w-full py-4 bg-orange-50 text-orange-600 rounded-2xl font-black text-xs uppercase hover:bg-orange-100 transition-colors">Trio AI Extract</button>
+                </div>
+                
+                <button onClick={() => { setFiles([]); setScannedPages([]); setIsCameraActive(false); setResult(null); }} className="w-full mt-6 py-3 text-slate-400 hover:text-red-500 text-xs font-black uppercase transition-colors">Discard All</button>
             </div>
-            <button 
-              onClick={() => {setFiles([]); setResult(null); setMessages([]); setEditedText(''); setError(null);}} 
-              className="w-full md:w-auto bg-slate-100 dark:bg-slate-800 p-4 rounded-xl md:rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-400 hover:text-red-500 transition-all flex items-center justify-center"
-            >
-              <span className="md:hidden mr-3 font-black uppercase tracking-widest text-xs">Remove All</span>
-              <svg className="w-5 h-5 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
           </div>
 
-          {tool.id === 'ai-chat' ? (
-            <div className="flex flex-col h-[500px] md:h-[600px] border border-slate-100 dark:border-slate-800 rounded-3xl md:rounded-[2rem] overflow-hidden bg-slate-50 dark:bg-slate-950/50">
-              <div className="flex-grow overflow-y-auto p-4 md:p-8 space-y-4 md:space-y-6 scroll-smooth custom-scrollbar">
-                {messages.length === 0 && (
-                  <div className="flex flex-col items-center justify-center h-full opacity-30 text-center px-4">
-                    <div className="p-4 bg-orange-500/10 rounded-2xl mb-4"><svg className="w-10 h-10 text-orange-500" fill="currentColor" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg></div>
-                    <p className="text-xs md:text-sm font-black uppercase tracking-[0.3em]">Ask about this PDF</p>
-                  </div>
-                )}
-                {messages.map((m, idx) => (
-                  <div key={idx} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[90%] md:max-w-[80%] rounded-2xl md:rounded-3xl px-5 py-3 md:px-8 md:py-5 shadow-sm text-sm md:text-lg font-medium leading-relaxed ${m.role === 'user' ? 'bg-orange-600 text-white' : 'bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-slate-800 dark:text-slate-200'}`}>
-                      {m.content}
+          <div className="lg:col-span-6 flex flex-col gap-4 overflow-hidden">
+             {isCameraActive ? (
+                <div className="flex-grow bg-slate-950 rounded-[3rem] relative overflow-hidden shadow-2xl">
+                    <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 border-[40px] border-black/40 pointer-events-none" />
+                    <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-8">
+                        <button onClick={() => setIsCameraActive(false)} className="w-12 h-12 rounded-full bg-white/20 text-white flex items-center justify-center backdrop-blur-md">
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                        <button onClick={capturePage} className="w-20 h-20 rounded-full bg-white border-4 border-orange-500 shadow-2xl active:scale-90 transition-transform" />
+                        <div className="w-12 h-12" />
                     </div>
-                  </div>
+                    <canvas ref={canvasRef} className="hidden" />
+                </div>
+             ) : (
+                <div className="flex-grow overflow-y-auto custom-scrollbar p-8 bg-white dark:bg-slate-900 rounded-[3rem] border-4 border-slate-100 dark:border-slate-800 shadow-inner">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                        {isScannerTool && scannedPages.map((p, i) => (
+                            <div key={i} className="relative group aspect-[3/4] bg-slate-50 dark:bg-slate-800 rounded-2xl overflow-hidden shadow-md border-2 border-orange-500/20">
+                                <img src={p} className="w-full h-full object-cover" />
+                                <div className="absolute top-2 right-2 bg-orange-600 text-white text-[10px] font-black px-2 py-1 rounded-lg">P{i+1}</div>
+                                <button onClick={() => setScannedPages(p => p.filter((_, idx) => idx !== i))} className="absolute -top-2 -right-2 bg-red-500 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                            </div>
+                        ))}
+                        {pdfPages.map((p, i) => (
+                            <div key={i} className="bg-slate-50 dark:bg-slate-800 p-2 rounded-2xl shadow-md border border-slate-200 dark:border-slate-700">
+                                <img src={p.dataUrl} className="w-full h-auto rounded-xl" />
+                                <p className="text-[9px] font-bold text-slate-400 mt-2 uppercase text-center">Page {p.pageNumber}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+             )}
+          </div>
+
+          <div className="lg:col-span-3 flex flex-col h-full bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden">
+             <div className="bg-slate-50 dark:bg-slate-800/50 p-5 border-b text-[10px] font-black uppercase tracking-widest text-orange-600">Trio Intelligence</div>
+             <div className="flex-grow overflow-y-auto p-5 space-y-5 custom-scrollbar">
+                {messages.map((m, i) => (
+                    <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-[11px] font-bold leading-relaxed shadow-sm ${m.role === 'user' ? 'bg-orange-600 text-white' : 'bg-slate-100 dark:bg-slate-800'}`}>{m.content}</div>
+                    </div>
                 ))}
-                {isProcessing && (
-                  <div className="flex justify-start">
-                    <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl px-5 py-3 text-slate-400 animate-pulse font-black uppercase tracking-widest text-[8px] md:text-[10px]">Trio is thinking...</div>
-                  </div>
-                )}
+                {result && <div className="bg-orange-50 dark:bg-orange-950/20 p-4 rounded-2xl border border-orange-100 dark:border-orange-900/30 text-[11px] font-medium leading-relaxed">{result}</div>}
+                {isProcessing && <div className="text-center py-4 animate-pulse text-xs font-bold text-slate-400 uppercase tracking-widest">Trio is thinking...</div>}
                 <div ref={chatEndRef} />
-              </div>
-              <div className="p-3 md:p-6 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row gap-2 md:gap-4">
-                <input 
-                  type="text" 
-                  value={input} 
-                  onChange={(e) => setInput(e.target.value)} 
-                  onKeyPress={(e) => e.key === 'Enter' && handleChat()} 
-                  placeholder="Ask the Trio..." 
-                  className="flex-grow border-2 md:border-4 border-slate-100 dark:border-slate-800 rounded-xl md:rounded-2xl px-5 py-3 md:py-4 outline-none focus:border-orange-500 transition-all dark:text-white bg-transparent text-sm md:text-xl font-medium" 
-                />
-                <button 
-                  onClick={handleChat} 
-                  disabled={isProcessing || !input.trim()} 
-                  className="bg-orange-600 text-white py-3 md:py-4 px-8 rounded-xl md:rounded-2xl font-black text-xs md:text-lg hover:bg-orange-700 disabled:opacity-50 transition-all shadow-lg active:scale-95 uppercase tracking-widest"
-                >
-                  SEND
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-8 md:space-y-10">
-              {result ? (
-                <div className="animate-in fade-in zoom-in-95 duration-500">
-                  <div className="flex flex-col md:flex-row items-center justify-between mb-6 md:mb-8 gap-4">
-                    <div className="text-center md:text-left">
-                      <h3 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white tracking-tight">AI Output Editor</h3>
-                      <p className="text-[10px] md:text-sm text-slate-400 font-black uppercase tracking-widest mt-1">Refine your document</p>
-                    </div>
-                    <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl md:rounded-3xl border border-slate-200 dark:border-slate-700 shadow-inner w-full md:w-auto">
-                      <button onClick={() => setDownloadFormat('pdf')} className={`flex-grow md:flex-none px-6 md:px-8 py-3 md:py-4 rounded-xl md:rounded-2xl text-[10px] md:text-sm font-black transition-all uppercase tracking-widest ${downloadFormat === 'pdf' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500 hover:text-orange-500'}`}>PDF</button>
-                      <button onClick={() => setDownloadFormat('doc')} className={`flex-grow md:flex-none px-6 md:px-8 py-3 md:py-4 rounded-xl md:rounded-2xl text-[10px] md:text-sm font-black transition-all uppercase tracking-widest ${downloadFormat === 'doc' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500 hover:text-orange-500'}`}>WORD</button>
-                    </div>
-                  </div>
-                  <div className="relative bg-slate-100 dark:bg-slate-950 p-4 md:p-12 rounded-[2rem] md:rounded-[3rem] shadow-inner border-2 md:border-4 border-slate-200 dark:border-slate-800">
-                    <textarea 
-                      value={editedText} 
-                      onChange={(e) => setEditedText(e.target.value)} 
-                      className="w-full min-h-[400px] md:min-h-[700px] p-6 md:p-20 rounded-2xl md:rounded-md bg-white dark:bg-slate-900 shadow-xl font-sans text-sm md:text-xl leading-relaxed text-slate-800 dark:text-slate-100 outline-none focus:ring-4 md:focus:ring-8 focus:ring-orange-500/5 transition-all border border-slate-200 dark:border-slate-800" 
-                      placeholder="Editing..." 
-                    />
-                    <div className="absolute top-8 right-8 hidden lg:block"><div className="flex items-center space-x-2 bg-orange-600 text-white px-5 py-2.5 rounded-full shadow-2xl"><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/></svg><span className="text-[11px] font-black uppercase tracking-widest">Trio AI Verified</span></div></div>
-                  </div>
-                  <div className="mt-8 md:mt-12 flex flex-col gap-4">
-                    <button onClick={handleDownload} className="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 py-6 md:py-8 rounded-2xl md:rounded-[2rem] font-black text-xl md:text-3xl hover:scale-[1.01] active:scale-95 shadow-xl transition-all flex items-center justify-center tracking-tighter uppercase"><svg className="w-6 h-6 md:w-10 md:h-10 mr-4 md:mr-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>DOWNLOAD {downloadFormat.toUpperCase()}</button>
-                    <button onClick={() => {setFiles([]); setResult(null); setEditedText(''); setError(null);}} className="w-full py-5 md:py-8 border-2 md:border-4 border-slate-200 dark:border-slate-800 text-slate-400 hover:text-orange-500 hover:border-orange-500 rounded-2xl md:rounded-[2rem] font-black transition-all text-sm md:text-2xl uppercase tracking-widest">START NEW TASK</button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center py-6 md:py-10">
-                   <button 
-                    onClick={handleProcess}
-                    disabled={isProcessing || !!error}
-                    className="w-full max-w-2xl bg-orange-600 text-white py-8 md:py-10 rounded-2xl md:rounded-[3rem] text-xl md:text-4xl font-black hover:bg-orange-700 shadow-2xl disabled:opacity-50 flex items-center justify-center transition-all active:scale-95 group uppercase tracking-widest px-4 text-center"
-                  >
-                    {isProcessing ? (
-                      <span className="flex items-center"><svg className="animate-spin -ml-1 mr-3 md:mr-5 h-6 w-6 md:h-10 md:w-10 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Trio Working...</span>
-                    ) : (
-                      <><svg className="w-6 h-6 md:w-10 md:h-10 mr-3 md:mr-5 group-hover:rotate-12 transition-transform" fill="currentColor" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>Process Now</>
-                    )}
-                  </button>
-                  <div className="mt-8 md:mt-12 flex items-center space-x-6 md:space-x-8">
-                     <div className="flex -space-x-3 md:-space-x-4">
-                        {[1,2,3].map(i => <div key={i} className="w-10 h-10 md:w-14 md:h-14 rounded-full border-2 md:border-4 border-white dark:border-slate-900 bg-slate-200 dark:bg-slate-800 overflow-hidden shadow-xl"><div className="w-full h-full bg-[#ffdca2] flex items-center justify-center text-[8px] md:text-xs font-black">AI</div></div>)}
-                     </div>
-                     <p className="text-[8px] md:text-sm text-slate-400 font-black uppercase tracking-[0.3em] md:tracking-[0.4em]">Engineered for perfection</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+             </div>
+             <div className="p-4 border-t flex gap-2">
+                <input type="text" value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleChat()} placeholder="Trio se pucho..." className="flex-grow bg-slate-50 dark:bg-slate-800 rounded-2xl px-5 py-3.5 outline-none text-xs font-bold" />
+                <button onClick={handleChat} disabled={isProcessing || !input.trim()} className="bg-orange-600 text-white p-4 rounded-2xl"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg></button>
+             </div>
+          </div>
         </div>
       )}
     </div>

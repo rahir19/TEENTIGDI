@@ -6,7 +6,7 @@ export type ToolID =
   | 'pdf-to-jpg' | 'pdf-to-word' | 'pdf-to-ppt' | 'pdf-to-excel' | 'pdf-to-pdfa'
   | 'rotate' | 'page-numbers' | 'watermark' | 'crop' | 'edit-pdf'
   | 'unlock' | 'protect' | 'sign' | 'redact' | 'compare'
-  | 'ai-summarize' | 'ai-chat' | 'pdf-to-ocr-word';
+  | 'ai-summarize' | 'ai-chat' | 'pdf-to-ocr-word' | 'screenshot-editor';
 
 export interface PDFTool {
   id: ToolID;

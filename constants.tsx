@@ -3,6 +3,40 @@ import React from 'react';
 import { PDFTool } from './types';
 
 export const TOOLS: PDFTool[] = [
+  // AI SUITE (The Trio Specials)
+  {
+    id: 'screenshot-editor',
+    title: 'AI Screenshot Editor',
+    description: 'Edit, annotate, and enhance your screenshots online with AI precision.',
+    icon: <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2v4m0 0l-2-2m2 2l2-2" /></svg>,
+    color: 'bg-orange-600',
+    category: 'edit'
+  },
+  {
+    id: 'pdf-to-ocr-word',
+    title: 'PDF to OCR Word',
+    description: 'Turn scanned PDFs into editable Word files with the highest accuracy.',
+    icon: <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2v4m0 0l-2-2m2 2l2-2" /></svg>,
+    color: 'bg-indigo-700',
+    category: 'ai'
+  },
+  {
+    id: 'ai-chat',
+    title: 'Chat with PDF',
+    description: 'Ask questions, get summaries, and find data instantly in any document.',
+    icon: <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>,
+    color: 'bg-purple-600',
+    category: 'ai'
+  },
+  {
+    id: 'ai-summarize',
+    title: 'AI Summarize',
+    description: 'Get deep insights and key takeaways from long documents in seconds.',
+    icon: <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>,
+    color: 'bg-indigo-500',
+    category: 'ai'
+  },
+
   // ORGANIZE PDF
   {
     id: 'merge',
@@ -60,7 +94,7 @@ export const TOOLS: PDFTool[] = [
     id: 'jpg-to-pdf',
     title: 'JPG to PDF',
     description: 'Convert JPG, PNG, BMP, GIF and TIFF images to PDF document.',
-    icon: <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>,
+    icon: <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2-2v12a2 2 0 002 2z" /></svg>,
     color: 'bg-blue-400',
     category: 'convert'
   },
@@ -165,31 +199,5 @@ export const TOOLS: PDFTool[] = [
     icon: <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>,
     color: 'bg-blue-800',
     category: 'security'
-  },
-
-  // AI SUITE (The Trio Specials)
-  {
-    id: 'pdf-to-ocr-word',
-    title: 'PDF to OCR Word',
-    description: 'Turn scanned PDFs into editable Word files with the highest accuracy.',
-    icon: <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2v4m0 0l-2-2m2 2l2-2" /></svg>,
-    color: 'bg-indigo-700',
-    category: 'ai'
-  },
-  {
-    id: 'ai-chat',
-    title: 'Chat with PDF',
-    description: 'Ask questions, get summaries, and find data instantly in any document.',
-    icon: <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>,
-    color: 'bg-purple-600',
-    category: 'ai'
-  },
-  {
-    id: 'ai-summarize',
-    title: 'AI Summarize',
-    description: 'Get deep insights and key takeaways from long documents in seconds.',
-    icon: <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>,
-    color: 'bg-indigo-500',
-    category: 'ai'
   }
 ];

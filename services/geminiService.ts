@@ -2,10 +2,10 @@
 import { GoogleGenAI } from "@google/genai";
 
 export class GeminiService {
-  private ai: GoogleGenAI;
-
-  constructor() {
-    this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+  private getAI() {
+    // Creating a fresh instance to ensure the latest API key is used.
+    // Always use process.env.API_KEY string directly as per guidelines.
+    return new GoogleGenAI({ apiKey: process.env.API_KEY as string });
   }
 
   async processDocument(
@@ -16,33 +16,36 @@ export class GeminiService {
     systemInstruction: string
   ): Promise<string> {
     try {
-      const response = await this.ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                inlineData: {
-                  mimeType: mimeType,
-                  data: base64Data,
-                },
+      const ai = this.getAI();
+      // Using gemini-3-pro-preview for complex reasoning tasks as per guidelines.
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-pro-preview',
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                mimeType: mimeType,
+                data: base64Data,
               },
-              {
-                text: `${taskPrompt}`,
-              },
-            ],
-          },
-        ],
+            },
+            {
+              text: taskPrompt,
+            },
+          ],
+        },
         config: {
-          systemInstruction: systemInstruction,
-          temperature: 0.1, // Lower temperature for more faithful reproduction
+          systemInstruction: systemInstruction + " IMPORTANT: You are a Hinglish-expert AI. You perfectly understand Hindi, English, and Hinglish. If the user gives instructions in Hinglish (e.g., 'iska summary kar do', 'bhai text nikaal de'), you must execute them flawlessly. Always reply in a mix of English and Hindi (Hinglish) to keep it friendly.",
+          temperature: 0.7,
         },
       });
-      return response.text || "No output could be generated.";
-    } catch (error) {
+      // Directly accessing the .text property as per guidelines.
+      return response.text || "Sorry, koi output generate nahi ho paya.";
+    } catch (error: any) {
       console.error("Trio AI processing error:", error);
-      return "An error occurred while the Trio AI was reading your document. Please ensure the file is valid and not password protected.";
+      if (error?.message?.includes("entity was not found")) {
+        return "ERROR_KEY_NOT_FOUND";
+      }
+      return "Arre! Trio AI ko thodi dikkat ho rahi hai. Kripya check karein ki file sahi hai ya internet theek chal raha hai. (Trio AI error: " + (error.message || "Unknown error") + ")";
     }
   }
 
@@ -51,8 +54,8 @@ export class GeminiService {
       fileName,
       base64Data,
       mimeType,
-      "Summarize this document clearly.",
-      "You are a professional document summarizer. Be concise and accurate."
+      "Summarize this document clearly in Hinglish.",
+      "You are a professional document summarizer."
     );
   }
 
@@ -61,8 +64,8 @@ export class GeminiService {
       fileName,
       base64Data,
       mimeType,
-      "Transcribe this document exactly. Maintain the layout, alignment, bold text, and overall structure as much as possible using plain text and basic spacing. DO NOT add any extra text, titles, or commentary. Start immediately with the document content.",
-      "You are an expert OCR and document reconstruction specialist. Your only task is to replicate the input document's text and basic layout perfectly. Never add your own labels or branding."
+      "Extract and transcribe all text from this document accurately.",
+      "You are an expert OCR specialist."
     );
   }
 
@@ -71,8 +74,8 @@ export class GeminiService {
       fileName,
       base64Data,
       mimeType,
-      `Question about this document: ${question}`,
-      "You are an AI assistant answering questions strictly based on the provided file."
+      `User Question: ${question}`,
+      "You are an AI assistant for Teen Tigdi. Answer strictly based on the provided file in a helpful Hinglish tone."
     );
   }
 }
